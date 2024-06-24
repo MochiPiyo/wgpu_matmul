@@ -4,28 +4,106 @@ use wgpu::util::DeviceExt;
 /*
 
 1. @8565u
-let n = 100;
-let m = 100;
-let o = 100;
-の条件においてGPU: 5msec, CPU: 60msecなのではやい
 
-get device: 113msec
-buffer allocate and binding, shader compile: 3msec
-execute and get back: 5msec
-gpu: 200.0
-cpu execute: 60msec
-cpu: 200.0
+500
+execute and get back: 352msec
+cpu execute: 50msec
 
+800
+execute and get back: 2141msec
+cpu execute: 215msec
 
+1000
+execute and get back: 5010msec
+cpu execute: 850msec
+
+2000からGPUの計算結果が0になるのadapter limitsのこれが原因では
+max_compute_workgroup_size_x: 1024,
+max_compute_workgroup_size_y: 1024,
+dviceは256になってるからdeviceのlimitより大きくても大丈夫らしい。
+1024よりでかくできないのか？
+Error in Adapter::request_device: Limit 'max_compute_workgroup_size_y' value 2048 is better than allowed 1024
+
+adapter info: AdapterInfo {
+    name: "Intel(R) UHD Graphics 620",
+    vendor: 32902,
+    device: 16032,
+    device_type: IntegratedGpu,
+    driver: "Intel Corporation",
+    driver_info: "Intel driver",
+    backend: Vulkan,
+}
+adapter limits: Limits {
+    max_texture_dimension_1d: 16384,
+    max_texture_dimension_2d: 16384,
+    max_texture_dimension_3d: 2048,
+    max_texture_array_layers: 2048,
+    max_bind_groups: 8,
+    max_bindings_per_bind_group: 1000,
+    max_dynamic_uniform_buffers_per_pipeline_layout: 16,
+    max_dynamic_storage_buffers_per_pipeline_layout: 16,
+    max_sampled_textures_per_shader_stage: 200,
+    max_samplers_per_shader_stage: 64,
+    max_storage_buffers_per_shader_stage: 200,
+    max_storage_textures_per_shader_stage: 16,
+    max_uniform_buffers_per_shader_stage: 200,
+    max_uniform_buffer_binding_size: 134217724,
+    max_storage_buffer_binding_size: 1073741820,
+    max_vertex_buffers: 16,
+    max_buffer_size: 18446744073709551615,
+    max_vertex_attributes: 32,
+    max_vertex_buffer_array_stride: 4095,
+    min_uniform_buffer_offset_alignment: 64,
+    min_storage_buffer_offset_alignment: 64,
+    max_inter_stage_shader_components: 128,
+    max_compute_workgroup_storage_size: 32768,
+    max_compute_invocations_per_workgroup: 1024,
+    max_compute_workgroup_size_x: 1024,
+    max_compute_workgroup_size_y: 1024,
+    max_compute_workgroup_size_z: 64,
+    max_compute_workgroups_per_dimension: 65536,
+    max_push_constant_size: 256,
+}
+hardware limits: Limits {
+    max_texture_dimension_1d: 2048,
+    max_texture_dimension_2d: 2048,
+    max_texture_dimension_3d: 256,
+    max_texture_array_layers: 256,
+    max_bind_groups: 4,
+    max_bindings_per_bind_group: 1000,
+    max_dynamic_uniform_buffers_per_pipeline_layout: 8,
+    max_dynamic_storage_buffers_per_pipeline_layout: 4,
+    max_sampled_textures_per_shader_stage: 16,
+    max_samplers_per_shader_stage: 16,
+    max_storage_buffers_per_shader_stage: 4,
+    max_storage_textures_per_shader_stage: 4,
+    max_uniform_buffers_per_shader_stage: 12,
+    max_uniform_buffer_binding_size: 16384,
+    max_storage_buffer_binding_size: 134217728,
+    max_vertex_buffers: 8,
+    max_buffer_size: 268435456,
+    max_vertex_attributes: 16,
+    max_vertex_buffer_array_stride: 2048,
+    min_uniform_buffer_offset_alignment: 256,
+    min_storage_buffer_offset_alignment: 256,
+    max_inter_stage_shader_components: 60,
+    max_compute_workgroup_storage_size: 16352,
+    max_compute_invocations_per_workgroup: 256,
+    max_compute_workgroup_size_x: 256,
+    max_compute_workgroup_size_y: 256,
+    max_compute_workgroup_size_z: 64,
+    max_compute_workgroups_per_dimension: 65535,
+    max_push_constant_size: 0,
+}
 */
 
 
-pub async fn run() {
+pub async fn run(x: usize) {
 
-    
-    let n = 100;
-    let m = 100;
-    let o = 100;
+
+    let n = x;//1000;
+    let m = x;//1000;
+    let o = x;//1000;
     
 
 
@@ -41,6 +119,7 @@ pub async fn run() {
         .request_adapter(&wgpu::RequestAdapterOptions::default())
         .await
         .unwrap();
+    
 
     let (device, queue) = adapter
         .request_device(
@@ -54,7 +133,16 @@ pub async fn run() {
         .await
         .unwrap();
 
+    
     println!("get device: {}msec", start.elapsed().as_millis());
+
+
+    println!("adapter info: {:#?}", adapter.get_info());
+    println!("adapter limits: {:#?}", adapter.limits());
+    println!("hardware limits: {:#?}", device.limits());
+    
+
+
     let start = std::time::Instant::now();
 
     // device, queue, numbers
@@ -105,7 +193,7 @@ pub async fn run() {
         module: &shader_module,
         entry_point: "main",
         // このバージョンではないっぽい
-        //constantas: &Default::default(),
+        // constantas: &Default::default(),
     });
 
     let bind_group_layout = compute_pileline.get_bind_group_layout(0);
@@ -159,8 +247,6 @@ pub async fn run() {
     // encoderの中身を送信
     queue.submit(Some(encoder.finish()));
 
-    
-
     let buffer_slice = staging_buffer.slice(..);
     let (sender, receiver) = flume::bounded(1);
     buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
@@ -188,7 +274,7 @@ pub async fn run() {
     println!("execute and get back: {}msec", start.elapsed().as_millis());
 
     // print result
-    println!("gpu: {:?}", result[0]);
+    //println!("gpu: {:?}", result[0]);
 
     let mut cpu_result = vec![0.0; n*o];
     let start = std::time::Instant::now();
@@ -200,8 +286,18 @@ pub async fn run() {
         }
     }
     println!("cpu execute: {}msec", start.elapsed().as_millis());
-    println!("cpu: {:?}", cpu_result[0]);
+    //println!("cpu: {:?}", cpu_result[0]);
 
+    for (c, g) in cpu_result.iter().zip(result.iter()) {
+        if c != g {
+            panic!("cpu: {}, gpu: {}", c, g);
+        }
+    }
+
+    /*
+    
+    
+    
     let mut cpu_result = vec![0.0; n*o];
     let start = std::time::Instant::now();
     for i in 0..n {
@@ -213,4 +309,5 @@ pub async fn run() {
     }
     println!("cpu execute(ikj): {}msec", start.elapsed().as_millis());
     println!("cpu: {:?}", cpu_result[0]);
+     */
 }

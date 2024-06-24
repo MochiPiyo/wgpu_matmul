@@ -11,3 +11,5 @@ bytemuck = "*"
 env_logger = "*"
 flume = "*"
 pollster = "*"
+
+lazy_static = "*"
