@@ -4,7 +4,7 @@ mod matmul;
 mod matmul_structured2;
 
 fn main() {
-    std::env::set_var("RUST_LOG", "info");
+    std::env::set_var("RUST_LOG", "warn");
     env_logger::init();
     //pollster::block_on(collatz::run());
 
