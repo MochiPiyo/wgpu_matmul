@@ -342,7 +342,7 @@ impl RawGf32 {
             //include_str!("./matmul.wgsl"),
             //(sizes_info[0] as u32, sizes_info[2] as u32, 1)
             "1naive.wgsl",
-            include_str!("./1naive.wgsl"),
+            include_str!("./3shared.wgsl"),
             // tile size = 16
             (sizes_info[0] as u32 / 16, sizes_info[2] as u32/ 16, 1)
         );
@@ -362,7 +362,7 @@ impl RawGf32 {
 
 
 pub fn run() {
-
+    /*
     // 計算データをバッファに確保
     let s = std::time::Instant::now();
     let a = RawGf32::new_init(Shape::D2(2, 2), &vec![1.0; 4], Some("a"));
@@ -387,7 +387,7 @@ pub fn run() {
 
     println!("result of e is: ");
     e.print_1();
-
+ */
 
 
 
@@ -408,6 +408,7 @@ pub fn run() {
     c.print_1();
     println!("連続１回，{:?}", s.elapsed());
 
+    /*
     // 2回計算
     let s = std::time::Instant::now();
     let a = RawGf32::new_init(Shape::D2(size, size), &vec![1.0; size*size], Some("a"));
@@ -417,9 +418,12 @@ pub fn run() {
 
     let c = a.matmul(&b);
     let e = c.matmul(&b2);
+    //let x = c.matmul(&e);
+    //let y = a.matmul(&b);
+    
 
     println!("result of e is: ");
     e.print_1();
     println!("連続２回，{:?}", s.elapsed());
-    
+     */
 }
