@@ -335,8 +335,8 @@ impl RawGf32 {
             //"matmul.wgsl",
             //include_str!("./matmul.wgsl"),
             //(sizes_info[0] as u32, sizes_info[2] as u32, 1)
-            "2GMcoalescing.wgsl",
-            include_str!("./2GMcoalescing.wgsl"),
+            "matmul2.wgsl",
+            include_str!("./matmul2.wgsl"),
             // tile size = 16
             (sizes_info[0] as u32 / 16, sizes_info[2] as u32/ 16, 1)
         );
@@ -389,7 +389,7 @@ pub fn run() {
     // データ転送の時間を特定
     // 結果はspeed_result.text(.gitginore)に記載
     
-    let size = 1024;
+    let size = 1024*4;
 
     // 1回計算
     let s = std::time::Instant::now();
