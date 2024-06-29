@@ -23,12 +23,18 @@ thread_local! {
         );
         let adapter = a.unwrap();
 
+        // これをしないと1024*8の正方行列が通らない
+        let mut new_limit = wgpu::Limits::default();
+        new_limit.max_storage_buffer_binding_size = adapter.limits().max_storage_buffer_binding_size;
+        // これもすると16まで通る
+        new_limit.max_buffer_size = adapter.limits().max_buffer_size;
+
         let d = pollster::block_on(
             adapter.request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
                     features: wgpu::Features::empty(),
-                    limits: wgpu::Limits::downlevel_defaults(),
+                    limits: new_limit,
                 },
                 None,
             )
@@ -335,8 +341,8 @@ impl RawGf32 {
             //"matmul.wgsl",
             //include_str!("./matmul.wgsl"),
             //(sizes_info[0] as u32, sizes_info[2] as u32, 1)
-            "matmul2.wgsl",
-            include_str!("./matmul2.wgsl"),
+            "1naive.wgsl",
+            include_str!("./1naive.wgsl"),
             // tile size = 16
             (sizes_info[0] as u32 / 16, sizes_info[2] as u32/ 16, 1)
         );
@@ -389,7 +395,7 @@ pub fn run() {
     // データ転送の時間を特定
     // 結果はspeed_result.text(.gitginore)に記載
     
-    let size = 1024*4;
+    let size = 1024;
 
     // 1回計算
     let s = std::time::Instant::now();
