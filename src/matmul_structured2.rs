@@ -336,7 +336,7 @@ impl RawGf32 {
         // 結果のバッファ確保
         let result = Self::_new_empty(reuslt_shape, Some("result"));
 
-        let tile_size = 64;
+        let tile_size = 16;
         //println!("tile_size = {}, but sizes_info[0] = {}, sizes_info[2] = {}", tile_size, sizes_info[0], sizes_info[2]);
         WgpuServer::execute_4(
             &self.buffer,
@@ -347,7 +347,7 @@ impl RawGf32 {
             //include_str!("./matmul.wgsl"),
             //(sizes_info[0] as u32, sizes_info[2] as u32, 1)
             "3shared.wgsl",
-            include_str!("./6vectorize.wgsl"),
+            include_str!("./1naive.wgsl"),
             (sizes_info[0] as u32 / tile_size, sizes_info[2] as u32 / tile_size, 1)
         );
 
@@ -405,8 +405,8 @@ pub fn run() {
     // --------------------------------------
     // データ転送の時間を特定
     // 結果はspeed_result.text(.gitginore)に記載
-    //
-    let sizes = vec![1024, 1024*2, 1024*4, 1024*8, 1024*16];
+    //, 1024*16
+    let sizes = vec![1024, 1024*2, 1024*4, 1024*8];
     let mut results = vec![];
 
     for &size in sizes.iter() {

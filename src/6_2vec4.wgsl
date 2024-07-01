@@ -2,13 +2,13 @@
 // 行列積を計算する
 // Matrix<f32, M, K>
 @group(0) @binding(0)
-var<storage, read> lhs: array<f32>;
+var<storage, read> lhs: array<vec4<f32>>;
 // Matrix<f32, K, N>
 @group(0) @binding(1)
-var<storage, read> rhs: array<f32>;
+var<storage, read> rhs: array<vec4<f32>>;
 // Matrix<f32, M, N>
 @group(0) @binding(2)
-var<storage, read_write> output: array<f32>;
+var<storage, read_write> output: array<vec4<f32>>;
 // メタデータ
 // vec![M, K, N]
 @group(0) @binding(3)
@@ -32,14 +32,19 @@ const BM: u32 = 64u; // tile_size = 64
 const BN: u32 = 64u;
 const BK: u32 = 8u;
 // TM * TN = BM * BN / workgroup_size.x
-const TM: u32 = 8u;
-const TN: u32 = 8u;
+const TM: u32 = 8u; // 4の倍数（vec4のため）
+const TN: u32 = 8u; // 4の倍数（vec4のため）
 // TM_TN = TM * TN
 const TM_TN: u32 = 64u;
 
-// array<f32, BM * BK> or BK * BN
-var<workgroup> lhs_shared: array<f32, 512>;
-var<workgroup> rhs_shared: array<f32, 512>;
+// resister cache用
+const TM_4: u32 = 2u;
+const TN_4: u32 = 2u;
+const TM_TN_4: u32 = 16u;
+
+// array<f32, BM * BK / 4> or BK * BN / 4
+var<workgroup> lhs_shared: array<vec4<f32>, 128>;
+var<workgroup> rhs_shared: array<vec4<f32>, 128>;
 
 
 // BM * BN / TM = workgroup_size.x, BM*BNはoutputのブロックの要素数。TMで割るとスレッド数
@@ -79,23 +84,18 @@ fn main(
     let rhs_innerRow = local_id.x / (BN / 4u);
 
     // thread local cache
-    var threadResults = array<f32, TM_TN>();
+    var threadResults = array<vec4<f32>, TM_TN_4>();
     // register caches for lhs and rhs
-    var regM = array<f32, TM>();
-    var regN = array<f32, TN>();
+    var regM = array<vec4<f32>, TM_4>();
+    var regN = array<vec4<f32>, TN_4>();
 
     // outer loop over block tiles
     for (var bkIdx = 0u; bkIdx < K; bkIdx += BK) {
         // populate the Shared Memory caches
-        lhs_shared[(lhs_innerCol * 4u + 0u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u * 0u];
-        lhs_shared[(lhs_innerCol * 4u + 1u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u * 1u];
-        lhs_shared[(lhs_innerCol * 4u + 2u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u * 2u];
-        lhs_shared[(lhs_innerCol * 4u + 3u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u * 3u];
 
-        rhs_shared[rhs_innerRow * BN + rhs_innerCol * 4u + 0u] = rhs[rhs_shift + rhs_innerRow * N + rhs_innerCol * 4u + 0u];
-        rhs_shared[rhs_innerRow * BN + rhs_innerCol * 4u + 1u] = rhs[rhs_shift + rhs_innerRow * N + rhs_innerCol * 4u + 1u];
-        rhs_shared[rhs_innerRow * BN + rhs_innerCol * 4u + 2u] = rhs[rhs_shift + rhs_innerRow * N + rhs_innerCol * 4u + 2u];
-        rhs_shared[rhs_innerRow * BN + rhs_innerCol * 4u + 3u] = rhs[rhs_shift + rhs_innerRow * N + rhs_innerCol * 4u + 3u];
+        // vec4
+        lhs_shared[(lhs_innerCol * 4u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u];
+        rhs_shared[rhs_innerRow * BN + rhs_innerCol * 4u] = rhs[rhs_shift + rhs_innerRow * N + rhs_innerCol * 4u];
         workgroupBarrier();
 
 
@@ -106,18 +106,18 @@ fn main(
         // calculate per-thread results
         for (var dotIdx = 0u; dotIdx < BK; dotIdx += 1u) {
             // block into registers from shared memory
-            for (var i = 0u; i < TM; i += 1u) {
+            for (var i = 0u; i < TM / 4u; i += 1u) {
                 // vectorized !
-                regM[i] = lhs_shared[dotIdx * BM + threadRow * TM + i];
+                regM[i] = lhs_shared[(dotIdx * BM + threadRow * TM) / 4u + i];
             }
-            for (var i = 0u; i < TN; i += 1u) {
-                regN[i] = rhs_shared[dotIdx * BN + threadCol * TN + i];
+            for (var i = 0u; i < TN / 4u; i += 1u) {
+                regN[i] = rhs_shared[(dotIdx * BN + threadCol * TN) / 4u + i];
             }
 
             // calculate
-            for (var resIdxM = 0u; resIdxM < TM; resIdxM += 1u) {
-                for (var resIdxN = 0u; resIdxN < TN; resIdxN += 1u) {
-                    threadResults[resIdxM * TN + resIdxN] += regM[resIdxM] * regN[resIdxN];
+            for (var resIdxM = 0u; resIdxM < TM / 4u; resIdxM += 1u) {
+                for (var resIdxN = 0u; resIdxN < TN / 4u; resIdxN += 1u) {
+                    threadResults[resIdxM * TN / 4u + resIdxN] += regM[resIdxM] * regN[resIdxN];
                 }
             }
         }
@@ -127,15 +127,11 @@ fn main(
     // write out the results
     for (var resIdxM = 0u; resIdxM < TM; resIdxM += 1u) {
         // vectorized! += 4u
-        for (var resIdxN = 0u; resIdxN < TN; resIdxN += 4u) {
+        for (var resIdxN = 0u; resIdxN < TN / 4u; resIdxN += 1u) {
             // CUDAはC += shiftでずらしていたが、こっちではできないので。
             // cRow * BM, cCol * BNはworkgroupの位置
 
-            output[out_shift + (threadRow * TM + resIdxM) * N + threadCol * TN + resIdxN + 0u] = threadResults[resIdxM * TN + resIdxN + 0u];
-            output[out_shift + (threadRow * TM + resIdxM) * N + threadCol * TN + resIdxN + 1u] = threadResults[resIdxM * TN + resIdxN + 1u];
-            output[out_shift + (threadRow * TM + resIdxM) * N + threadCol * TN + resIdxN + 2u] = threadResults[resIdxM * TN + resIdxN + 2u];
-            output[out_shift + (threadRow * TM + resIdxM) * N + threadCol * TN + resIdxN + 3u] = threadResults[resIdxM * TN + resIdxN + 3u];
-            
+            output[out_shift + (threadRow * TM + resIdxM) * N + threadCol * TN + resIdxN] = threadResults[resIdxM * TN + resIdxN];
                 
         }
     }

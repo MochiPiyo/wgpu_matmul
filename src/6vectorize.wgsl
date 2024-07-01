@@ -87,10 +87,10 @@ fn main(
     // outer loop over block tiles
     for (var bkIdx = 0u; bkIdx < K; bkIdx += BK) {
         // populate the Shared Memory caches
-        lhs_shared[(lhs_innerCol * 4u + 0u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u * 0u];
-        lhs_shared[(lhs_innerCol * 4u + 1u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u * 1u];
-        lhs_shared[(lhs_innerCol * 4u + 2u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u * 2u];
-        lhs_shared[(lhs_innerCol * 4u + 3u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u * 3u];
+        lhs_shared[(lhs_innerCol * 4u + 0u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u + 0u];
+        lhs_shared[(lhs_innerCol * 4u + 1u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u + 1u];
+        lhs_shared[(lhs_innerCol * 4u + 2u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u + 2u];
+        lhs_shared[(lhs_innerCol * 4u + 3u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u + 3u];
 
         rhs_shared[rhs_innerRow * BN + rhs_innerCol * 4u + 0u] = rhs[rhs_shift + rhs_innerRow * N + rhs_innerCol * 4u + 0u];
         rhs_shared[rhs_innerRow * BN + rhs_innerCol * 4u + 1u] = rhs[rhs_shift + rhs_innerRow * N + rhs_innerCol * 4u + 1u];
