@@ -28,6 +28,9 @@ thread_local! {
         new_limit.max_storage_buffer_binding_size = adapter.limits().max_storage_buffer_binding_size;
         // これもすると16まで通る
         new_limit.max_buffer_size = adapter.limits().max_buffer_size;
+        // workgroup_size
+        new_limit.max_compute_workgroup_size_x = adapter.limits().max_compute_workgroup_size_x;
+        new_limit.max_compute_invocations_per_workgroup = adapter.limits().max_compute_invocations_per_workgroup;
 
         let d = pollster::block_on(
             adapter.request_device(
@@ -333,6 +336,8 @@ impl RawGf32 {
         // 結果のバッファ確保
         let result = Self::_new_empty(reuslt_shape, Some("result"));
 
+        let tile_size = 64;
+        //println!("tile_size = {}, but sizes_info[0] = {}, sizes_info[2] = {}", tile_size, sizes_info[0], sizes_info[2]);
         WgpuServer::execute_4(
             &self.buffer,
             &other.buffer,
@@ -341,10 +346,9 @@ impl RawGf32 {
             //"matmul.wgsl",
             //include_str!("./matmul.wgsl"),
             //(sizes_info[0] as u32, sizes_info[2] as u32, 1)
-            "1naive.wgsl",
-            include_str!("./3shared.wgsl"),
-            // tile size = 16
-            (sizes_info[0] as u32 / 16, sizes_info[2] as u32/ 16, 1)
+            "3shared.wgsl",
+            include_str!("./6vectorize.wgsl"),
+            (sizes_info[0] as u32 / tile_size, sizes_info[2] as u32 / tile_size, 1)
         );
 
         return  result;
@@ -355,6 +359,13 @@ impl RawGf32 {
 
         // 出力する
         println!("shape: {}, body[0]: {:?}", self.shape.to_string(), result[0]);
+
+        /*
+        let size = 1024*8;
+        for chunk in result.chunks(size).into_iter() {
+            println!("{:?}", chunk);
+            break;
+        } */
     }
 }
 
@@ -362,7 +373,7 @@ impl RawGf32 {
 
 
 pub fn run() {
-    /*
+    
     // 計算データをバッファに確保
     let s = std::time::Instant::now();
     let a = RawGf32::new_init(Shape::D2(2, 2), &vec![1.0; 4], Some("a"));
@@ -387,26 +398,37 @@ pub fn run() {
 
     println!("result of e is: ");
     e.print_1();
- */
+ 
 
 
 
     // --------------------------------------
     // データ転送の時間を特定
     // 結果はspeed_result.text(.gitginore)に記載
-    
-    let size = 1024;
+    //
+    let sizes = vec![1024, 1024*2, 1024*4, 1024*8, 1024*16];
+    let mut results = vec![];
 
-    // 1回計算
-    let s = std::time::Instant::now();
-    let a = RawGf32::new_init(Shape::D2(size, size), &vec![1.0; size*size], Some("a"));
-    let b = RawGf32::new_init(Shape::D2(size, size), &vec![2.0; size*size], Some("b"));
+    for &size in sizes.iter() {
+        
+        // 1回計算
+        let s = std::time::Instant::now();
+        let a = RawGf32::new_init(Shape::D2(size, size), &vec![1.0; size*size], Some("a"));
+        let b = RawGf32::new_init(Shape::D2(size, size), &vec![2.0; size*size], Some("b"));
 
-    let c = a.matmul(&b);
+        let c = a.matmul(&b);
 
-    println!("result of e is: ");
-    c.print_1();
-    println!("連続１回，{:?}", s.elapsed());
+        println!("result of e is: ");
+        c.print_1();
+        let time = s.elapsed();
+        println!("連続１回, size = {}, time = {:?}", size, time);
+        results.push(time);
+    }
+    for r in results.iter() {
+        let micro2: String = r.as_micros().to_string().chars().take(2).collect();
+        println!("{:?}.{}", r.as_millis(), micro2);
+    }
+
 
     /*
     // 2回計算

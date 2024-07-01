@@ -17,7 +17,7 @@ var<storage, read> sizes: vec3<u32>;
 
 @compute @workgroup_size(16, 16, 1)
 fn main(
-    @builtin(global_invocation_id) global_id: vec3<u32>,
+    @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>
 ) {
     let M: u32 = sizes[0]; // Number of rows in lhs and output
@@ -31,15 +31,15 @@ fn main(
 
 
     let tile_size = 16u;
-    var x = global_id.x * tile_size + local_id.x; // Column index for output and rhs
-    var y = global_id.y * tile_size + local_id.y; // Row index for output and lhs
+    var x = workgroup_id.x * tile_size + local_id.x; // Column index for output and rhs
+    var y = workgroup_id.y * tile_size + local_id.y; // Row index for output and lhs
 
     if (x < M && y < N) {
         var sum: f32 = 0.0;
         for(var i: u32 = 0u; i < K; i += 1u) {
-            sum = sum + lhs[x * K + i] * rhs[i * N + y];
+            sum += lhs[x * K + i] * rhs[i * N + y];
         }
-        output[y * N + x] = sum;
+        output[x * N + y] = sum;
     }
     
 }

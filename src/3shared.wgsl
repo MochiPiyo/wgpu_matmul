@@ -19,7 +19,7 @@ var<workgroup> shared_rhs: array<f32, 256>;
 
 @compute @workgroup_size(16, 16, 1)
 fn main(
-    @builtin(global_invocation_id) global_id: vec3<u32>,
+    @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>
 ) {
     let M: u32 = sizes[0]; // Number of rows in lhs and output
@@ -40,9 +40,9 @@ fn main(
 
 
     // このworkgroup(block)が担当する場所まで飛ばすシフト
-    var lhs_shift = global_id.y * tile_size * K;
-    var rhs_shift = global_id.x * tile_size;
-    var out_shift = global_id.y * tile_size * N + global_id.x * tile_size;
+    var lhs_shift = workgroup_id.y * tile_size * K;
+    var rhs_shift = workgroup_id.x * tile_size;
+    var out_shift = workgroup_id.y * tile_size * N + workgroup_id.x * tile_size;
 
     var sum = 0.0;
 
