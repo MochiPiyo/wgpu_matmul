@@ -35,12 +35,12 @@ const BK: u32 = 8u;
 const TM: u32 = 8u; // 4の倍数（vec4のため）
 const TN: u32 = 8u; // 4の倍数（vec4のため）
 // TM_TN = TM * TN
-const TM_TN: u32 = 64u;
+const TMTN: u32 = 64u;
 
 // resister cache用
-const TM_4: u32 = 2u;
-const TN_4: u32 = 2u;
-const TM_TN_4: u32 = 16u;
+const TM4: u32 = 2u; // TM / 4
+const TN4: u32 = 2u; // TN / 4
+const TMTN4: u32 = 16u; // TM * TN / 4
 
 // array<f32, BM * BK / 4> or BK * BN / 4
 var<workgroup> lhs_shared: array<vec4<f32>, 128>;
@@ -70,31 +70,35 @@ fn main(
     let cCol = workgroup_id.x;
 
     let threadCol = local_id.x % (BN / TN);
-    let threadRow = local_id.x / (BN / BN);
+    let threadRow = local_id.x / (BN / TN);
 
     // ブロックのシフト
-    var lhs_shift = (cRow * BM) * K;
-    var rhs_shift = cCol * BN;
-    var out_shift = cRow * BM * N + cCol * BN;
+    // 全体の要素数は1/4になっている
+    var lhs_shift = (cRow * BM) * K / 4u;
+    var rhs_shift = cCol * BN / 4u;
+    var out_shift = cRow * BM * N + cCol * BN / 4u;
 
-    // lhsとrhsのアクセス用
+    // shared memoryのlhsとrhsのアクセス用
     let lhs_innerCol = local_id.x % (BK / 4u);
     let lhs_innerRow = local_id.x / (BK / 4u);
     let rhs_innerCol = local_id.x % (BN / 4u);
     let rhs_innerRow = local_id.x / (BN / 4u);
 
     // thread local cache
-    var threadResults = array<vec4<f32>, TM_TN_4>();
+    var threadResults = array<vec4<f32>, TMTN4>();
     // register caches for lhs and rhs
-    var regM = array<vec4<f32>, TM_4>();
-    var regN = array<vec4<f32>, TN_4>();
+    var regM = array<vec4<f32>, TM4>();
+    var regN = array<vec4<f32>, TN4>();
 
     // outer loop over block tiles
     for (var bkIdx = 0u; bkIdx < K; bkIdx += BK) {
         // populate the Shared Memory caches
 
         // vec4
-        lhs_shared[(lhs_innerCol * 4u) * BM + lhs_innerRow] = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u];
+        // transpose lhs
+        let lhs_vec4 = lhs[lhs_shift * lhs_innerRow * K + lhs_innerCol * 4u];
+        lhs_shared[(lhs_innerCol * 4u + 0u) * BM + lhs_innerRow]
+
         rhs_shared[rhs_innerRow * BN + rhs_innerCol * 4u] = rhs[rhs_shift + rhs_innerRow * N + rhs_innerCol * 4u];
         workgroupBarrier();
 
@@ -106,18 +110,18 @@ fn main(
         // calculate per-thread results
         for (var dotIdx = 0u; dotIdx < BK; dotIdx += 1u) {
             // block into registers from shared memory
-            for (var i = 0u; i < TM / 4u; i += 1u) {
+            for (var i = 0u; i < TM4; i += 1u) {
                 // vectorized !
                 regM[i] = lhs_shared[(dotIdx * BM + threadRow * TM) / 4u + i];
             }
-            for (var i = 0u; i < TN / 4u; i += 1u) {
+            for (var i = 0u; i < TN4; i += 1u) {
                 regN[i] = rhs_shared[(dotIdx * BN + threadCol * TN) / 4u + i];
             }
 
             // calculate
-            for (var resIdxM = 0u; resIdxM < TM / 4u; resIdxM += 1u) {
-                for (var resIdxN = 0u; resIdxN < TN / 4u; resIdxN += 1u) {
-                    threadResults[resIdxM * TN / 4u + resIdxN] += regM[resIdxM] * regN[resIdxN];
+            for (var resIdxM = 0u; resIdxM < TM4; resIdxM += 1u) {
+                for (var resIdxN = 0u; resIdxN < TN4; resIdxN += 1u) {
+                    threadResults[resIdxM * TN4 + resIdxN] += regM[resIdxM] * regN[resIdxN];
                 }
             }
         }
@@ -125,13 +129,13 @@ fn main(
     }
 
     // write out the results
-    for (var resIdxM = 0u; resIdxM < TM; resIdxM += 1u) {
+    for (var resIdxM = 0u; resIdxM < TM / 4u; resIdxM += 1u) {
         // vectorized! += 4u
         for (var resIdxN = 0u; resIdxN < TN / 4u; resIdxN += 1u) {
             // CUDAはC += shiftでずらしていたが、こっちではできないので。
             // cRow * BM, cCol * BNはworkgroupの位置
 
-            output[out_shift + (threadRow * TM + resIdxM) * N + threadCol * TN + resIdxN] = threadResults[resIdxM * TN + resIdxN];
+            output[out_shift + ((threadRow * TM + resIdxM) * N + threadCol * TN_4 + resIdxN] = threadResults[resIdxM * TN + resIdxN];
                 
         }
     }

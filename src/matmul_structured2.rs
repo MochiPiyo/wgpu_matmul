@@ -189,7 +189,7 @@ impl WgpuServer {
             
             // encoderの中身を送信
             w.queue.submit(Some(encoder.finish()));
-    
+            
             
         })
 
@@ -224,7 +224,7 @@ impl WgpuServer {
             w.device.poll(wgpu::Maintain::Wait);
 
             // buffer_futureが読み出し可能になるまでawait
-            let result: Vec<f32> = if let Ok(Ok(())) = pollster::block_on(receiver.recv_async()) {
+            let result = if let Ok(Ok(())) = pollster::block_on(receiver.recv_async()) {
                 // get contents of buffer
                 let buffer_view = buffer_slice.get_mapped_range();
                 // bytes to u32
@@ -336,7 +336,8 @@ impl RawGf32 {
         // 結果のバッファ確保
         let result = Self::_new_empty(reuslt_shape, Some("result"));
 
-        let tile_size = 16;
+        // tile size = BM = BN
+        let tile_size = 64;
         //println!("tile_size = {}, but sizes_info[0] = {}, sizes_info[2] = {}", tile_size, sizes_info[0], sizes_info[2]);
         WgpuServer::execute_4(
             &self.buffer,
@@ -347,7 +348,7 @@ impl RawGf32 {
             //include_str!("./matmul.wgsl"),
             //(sizes_info[0] as u32, sizes_info[2] as u32, 1)
             "3shared.wgsl",
-            include_str!("./1naive.wgsl"),
+            include_str!("./6vectorize.wgsl"),
             (sizes_info[0] as u32 / tile_size, sizes_info[2] as u32 / tile_size, 1)
         );
 
@@ -361,10 +362,10 @@ impl RawGf32 {
         println!("shape: {}, body[0]: {:?}", self.shape.to_string(), result[0]);
 
         /*
-        let size = 1024*8;
+        let size = 64;
         for chunk in result.chunks(size).into_iter() {
             println!("{:?}", chunk);
-            break;
+            //break;
         } */
     }
 }
@@ -405,18 +406,20 @@ pub fn run() {
     // --------------------------------------
     // データ転送の時間を特定
     // 結果はspeed_result.text(.gitginore)に記載
-    //, 1024*16
-    let sizes = vec![1024, 1024*2, 1024*4, 1024*8];
+    //
+    let sizes = vec![1024, 1024*2, 1024*4, 1024*8, 1024*16];
     let mut results = vec![];
 
     for &size in sizes.iter() {
         
         // 1回計算
-        let s = std::time::Instant::now();
+        
         let a = RawGf32::new_init(Shape::D2(size, size), &vec![1.0; size*size], Some("a"));
         let b = RawGf32::new_init(Shape::D2(size, size), &vec![2.0; size*size], Some("b"));
 
+        let s = std::time::Instant::now();
         let c = a.matmul(&b);
+        let c = c.matmul(&a);
 
         println!("result of e is: ");
         c.print_1();
