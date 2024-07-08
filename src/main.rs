@@ -3,6 +3,8 @@ mod collatz;
 mod matmul;
 mod matmul_structured2;
 
+mod strassen;
+
 fn main() {
     std::env::set_var("RUST_LOG", "warn");
     env_logger::init();
@@ -17,6 +19,7 @@ fn main() {
     */
 
    // pollster::block_on(matmul::run());
-   matmul_structured2::run();
+   //matmul_structured2::run();
+   strassen::run();
     
 }

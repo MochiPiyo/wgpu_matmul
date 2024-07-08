@@ -16,6 +16,10 @@ use lazy_static::lazy_static;
 thread_local! {
     static DEVICE: Wgpu = {
         let instance = wgpu::Instance::default();
+        /*let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::DX12,
+            dx12_shader_compiler: wgpu::Dx12Compiler::Fxc,
+        });*/
 
         // thread_localの中ではawaitは使えないのでpollsterを使う。
         let a = pollster::block_on(
@@ -101,6 +105,96 @@ impl WgpuServer {
             b   
         })
     }
+    
+    fn execute_3(
+        buf1: &wgpu::Buffer,
+        buf2: &wgpu::Buffer,
+        buf3: &wgpu::Buffer,
+        shader_name: &str,
+        shader_str: &str, // include_str!して実行ファイルを１つにするために必要
+        dispatch: (u32, u32, u32),
+    ) {
+        DEVICE.with(|w| {
+            // まずキャッシュを読み取り専用で確認
+            /*let shader_module = {
+                {
+                    let mut shader_cache = w.shader_cache.write().unwrap();
+                    if shader_cache.contains_key(shader_name) {
+                        // キャッシュに存在する場合、何もせずスコープを抜ける
+                    
+                    } else {
+                        // キャッシュに存在しない場合、新しいShaderModuleを作成
+                        
+                        // 作成したShaderModuleをキャッシュに挿入
+                        shader_cache.insert(shader_name.to_string(), shader_module);
+                    }
+                }
+                {
+                    let shader_cache: RwLockReadGuard<HashMap<String, ShaderModule>> = w.shader_cache.read().unwrap();
+                    shader_cache.get(shader_name).unwrap()
+                }
+            };*/
+            let shader_module = w.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: None,
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_str)),
+            });
+
+            let compute_pileline = w.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: None,
+                layout: None,
+                module: &shader_module,
+                entry_point: "main",
+                // このバージョンではないっぽい
+                // constantas: &Default::default(),
+            });
+    
+            let bind_group_layout = compute_pileline.get_bind_group_layout(0);
+            let bind_group = w.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
+                // 
+                layout: &bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        // wgslからはbinding(0)で取れる
+                        binding: 0,
+                        // binding(0)の中身をさっき作成したbufferに指定
+                        resource: buf1.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: buf2.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: buf3.as_entire_binding(),
+                    },
+                ],
+            });
+    
+            // comand encoderは一つか複数のパイプラインを実行する
+            let mut encoder = w.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: None,
+            });
+            {
+                let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: None,
+                    // ない
+                    // timestamp_writes: None,
+                });
+                cpass.set_pipeline(&compute_pileline);
+                cpass.set_bind_group(0, &bind_group, &[]);
+                cpass.insert_debug_marker("compute collatz iterations");
+                cpass.dispatch_workgroups(dispatch.0, dispatch.1, dispatch.2);
+            }
+            
+            // encoderの中身を送信
+            w.queue.submit(Some(encoder.finish()));
+            
+            
+        })
+
+    }
+    
     fn execute_4(
         buf1: &wgpu::Buffer,
         buf2: &wgpu::Buffer,
@@ -167,7 +261,7 @@ impl WgpuServer {
                     wgpu::BindGroupEntry {
                         binding: 3,
                         resource: buf4.as_entire_binding(),
-                    }
+                    },
                 ],
             });
     
@@ -191,8 +285,7 @@ impl WgpuServer {
             w.queue.submit(Some(encoder.finish()));
             
             
-        })
-
+        });
     }
     fn get(src: &wgpu::Buffer) -> Vec<f32> {
         DEVICE.with(|w| {
@@ -246,7 +339,7 @@ impl WgpuServer {
 }
 
 
-
+#[derive(Eq, PartialEq, Clone)]
 pub enum Shape {
     //D1(usize),
     D2(usize, usize),
@@ -270,7 +363,7 @@ impl Shape {
 }
 
 
-struct RawGf32 {
+pub struct RawGf32 {
     label: Option<String>,
     shape: Shape,
     buffer: wgpu::Buffer,
@@ -316,7 +409,7 @@ impl RawGf32 {
                     if j != k {
                         panic!("incompatible matrix size");
                     }
-                    (Shape::D2(i, l), vec![i as u32, j as u32, l as u32])
+                    (Shape::D2(i, l), [i as u32, j as u32, l as u32])
                 } else {
                     panic!()
                 }
@@ -337,7 +430,7 @@ impl RawGf32 {
         let result = Self::_new_empty(reuslt_shape, Some("result"));
 
         // tile size = BM = BN
-        let tile_size = 64;
+        let tile_size = 32;
         //println!("tile_size = {}, but sizes_info[0] = {}, sizes_info[2] = {}", tile_size, sizes_info[0], sizes_info[2]);
         WgpuServer::execute_4(
             &self.buffer,
@@ -355,11 +448,93 @@ impl RawGf32 {
         return  result;
     }
 
+    pub fn add(&self, other: &Self) -> Self {
+        if self.shape != other.shape {
+            panic!("size unmatch, self.shape: {}, other.shape: {}", self.shape.to_string(), other.shape.to_string());
+        }
+        let out = Self::_new_empty(self.shape.clone(), Some("add out"));
+
+        let tile_size = 16;
+        let (dispatch_x, dispatch_y) = if let Shape::D2(x, y) = self.shape {
+            let dispatch_x = if x < tile_size {
+                1
+            } else {
+                (x / tile_size) as u32
+            };
+            let dispatch_y = if y < tile_size {
+                1
+            } else {
+                (y / tile_size) as u32
+            };
+            (dispatch_x, dispatch_y)
+        } else {
+            unimplemented!()
+        };
+        WgpuServer::execute_3(
+            &self.buffer,
+            &other.buffer,
+            &out.buffer,
+            "add.wgsl",
+            include_str!("./add.wgsl"),
+            (dispatch_x, dispatch_y, 1)
+        );
+
+        return out;
+    }
+
+    pub fn sub(&self, other: &Self) -> Self {
+        if self.shape != other.shape {
+            panic!("size unmatch, self.shape: {}, other.shape: {}", self.shape.to_string(), other.shape.to_string());
+        }
+        let out = Self::_new_empty(self.shape.clone(), Some("add out"));
+
+        let tile_size = 16;
+        let (dispatch_x, dispatch_y) = if let Shape::D2(x, y) = self.shape {
+            let dispatch_x = if x < tile_size {
+                1
+            } else {
+                (x / tile_size) as u32
+            };
+            let dispatch_y = if y < tile_size {
+                1
+            } else {
+                (y / tile_size) as u32
+            };
+            (dispatch_x, dispatch_y)
+        } else {
+            unimplemented!()
+        };
+        
+        WgpuServer::execute_3(
+            &self.buffer,
+            &other.buffer,
+            &out.buffer,
+            "sub.wgsl",
+            include_str!("./sub.wgsl"),
+            (dispatch_x, dispatch_y, 1)
+        );
+
+        return out;
+    }
+
     pub fn print_1(&self) {
         let result = WgpuServer::get(&self.buffer);
 
         // 出力する
         println!("shape: {}, body[0]: {:?}", self.shape.to_string(), result[0]);
+
+        /*
+        let size = 64;
+        for chunk in result.chunks(size).into_iter() {
+            println!("{:?}", chunk);
+            //break;
+        } */
+    }
+    pub fn print_all(&self) {
+        let result = WgpuServer::get(&self.buffer);
+
+        // 出力する
+        println!("shape: {}, body[0]: {:?}", self.shape.to_string(), result);
 
         /*
         let size = 64;
@@ -380,6 +555,11 @@ pub fn run() {
     let a = RawGf32::new_init(Shape::D2(2, 2), &vec![1.0; 4], Some("a"));
     let b = RawGf32::new_init(Shape::D2(2, 2), &vec![2.0; 4], Some("b"));
     println!("1, {:?}", s.elapsed());
+
+    let add = a.add(&b);
+    let sub = a.sub(&b);
+    add.print_all();
+    sub.print_all();
 
     // gpuで計算（シェーダコンパイル，パイプライン，ディスパッチ）
     let s = std::time::Instant::now();
@@ -406,8 +586,8 @@ pub fn run() {
     // --------------------------------------
     // データ転送の時間を特定
     // 結果はspeed_result.text(.gitginore)に記載
-    //
-    let sizes = vec![1024, 1024*2, 1024*4, 1024*8, 1024*16];
+    //, 1024*16
+    let sizes = vec![1024, 1024*2, 1024*4, 1024*8];
     let mut results = vec![];
 
     for &size in sizes.iter() {
