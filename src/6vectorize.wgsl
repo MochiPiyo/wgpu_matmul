@@ -28,19 +28,19 @@ var<storage, read> sizes: vec3<u32>;
 
 // BM * BK == num_workgroup.x, ブロック数
 // BN * BK == num_workgroup.x, ブロック数
-const BM: u32 = 8u; // tile_size = 64
-const BN: u32 = 8u;
-const BK: u32 = 2u;
+const BM: u32 = 32u; // tile_size = 64
+const BN: u32 = 32u;
+const BK: u32 = 4u;
 // TM * TN = BM * BN / workgroup_size.x
-const TM: u32 = 1u;
-const TN: u32 = 1u;
+const TM: u32 = 4u;
+const TN: u32 = 4u;
 // TM_TN = TM * TN
-const TM_TN: u32 = 1u;
+const TM_TN: u32 = 16u;
 
 // array<f32, BM * BK> or 
-var<workgroup> lhs_shared: array<f32, 16>;
+var<workgroup> lhs_shared: array<f32, 128>;
 // BK * BN
-var<workgroup> rhs_shared: array<f32, 16>;
+var<workgroup> rhs_shared: array<f32, 128>;
 
 
 // BM * BN / (TM * TN) = workgroup_size.x, BM*BNはoutputのブロックの要素数。TM*TNで割るとスレッド数

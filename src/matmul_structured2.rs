@@ -534,14 +534,14 @@ impl RawGf32 {
         let result = WgpuServer::get(&self.buffer);
 
         // 出力する
-        println!("shape: {}, body[0]: {:?}", self.shape.to_string(), result);
+        //println!("shape: {}, body[0]: {:?}", self.shape.to_string(), result);
 
-        /*
-        let size = 64;
+        
+        let size = 32;
         for chunk in result.chunks(size).into_iter() {
             println!("{:?}", chunk);
             //break;
-        } */
+        } /**/
     }
 }
 
@@ -586,8 +586,8 @@ pub fn run() {
     // --------------------------------------
     // データ転送の時間を特定
     // 結果はspeed_result.text(.gitginore)に記載
-    //, 1024*16
-    let sizes = vec![1024, 1024*2, 1024*4, 1024*8];
+    //1024, 1024*2, 1024*4, 1024*8, 1024*16
+    let sizes = vec![128];
     let mut results = vec![];
 
     for &size in sizes.iter() {
@@ -601,7 +601,7 @@ pub fn run() {
         let c = a.matmul(&b);
 
         println!("result of e is: ");
-        c.print_1();
+        c.print_all();
         let time = s.elapsed();
         println!("連続１回, size = {}, time = {:?}", size, time);
         results.push(time);
