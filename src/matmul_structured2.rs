@@ -599,7 +599,6 @@ pub fn run() {
 
         let s = std::time::Instant::now();
         let c = a.matmul(&b);
-        let c = c.matmul(&a);
 
         println!("result of e is: ");
         c.print_1();

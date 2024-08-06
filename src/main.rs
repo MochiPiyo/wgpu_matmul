@@ -19,7 +19,10 @@ fn main() {
     */
 
    // pollster::block_on(matmul::run());
-   //matmul_structured2::run();
-   strassen::run();
+   matmul_structured2::run();
+
+
+   // シュトラッセンはなんか結果おかしい。
+   //strassen::run();
     
 }
